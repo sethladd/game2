@@ -13,49 +13,89 @@ class Gem {
   final GemType type;
   final GemColor color;
   final double size;
+  int gridX = 0; // Column position (0-7)
+  int gridY = 0; // Row position (0-15)
+  bool isMoving = true;
 
   Gem({required this.type, required this.color, required this.size});
 
   Color get colorValue {
     switch (color) {
+      case GemColor.red:
+        return Colors.red;
       case GemColor.blue:
         return Colors.blue;
       case GemColor.green:
         return Colors.green;
-      case GemColor.red:
-        return Colors.red;
       case GemColor.yellow:
         return Colors.yellow;
     }
   }
 
+  static Gem random({required double size}) {
+    final random = math.Random();
+    final types = GemType.values;
+    final colors = GemColor.values;
+
+    final type = types[random.nextInt(types.length)];
+    final color = colors[random.nextInt(colors.length)];
+
+    return Gem(type: type, color: color, size: size);
+  }
+
   Widget build(BuildContext context) {
     if (type == GemType.diamond) {
-      return Transform.rotate(
-        angle: math.pi / 4, // 45 degrees
-        child: Container(
-          width: size / math.sqrt(2), // Scale down to match width of other gems
-          height:
-              size / math.sqrt(2), // Scale down to match width of other gems
-          decoration: BoxDecoration(
-            color: colorValue,
-            borderRadius: BorderRadius.circular(4),
-          ),
-        ),
+      return CustomPaint(
+        size: Size(
+          size * 0.8,
+          size * 0.8,
+        ), // Make diamond slightly smaller than cell
+        painter: DiamondPainter(color: colorValue),
       );
     }
 
     return Container(
-      width: size,
-      height: size,
+      width: size * 0.8, // Make gems slightly smaller than cell
+      height: size * 0.8, // Make gems slightly smaller than cell
       decoration: BoxDecoration(
         color: colorValue,
         shape: type == GemType.bomb ? BoxShape.circle : BoxShape.rectangle,
         borderRadius:
-            type == GemType.standard ? BorderRadius.circular(8) : null,
+            type == GemType.standard ? BorderRadius.circular(4) : null,
       ),
     );
   }
+}
+
+class DiamondPainter extends CustomPainter {
+  final Color color;
+
+  DiamondPainter({required this.color});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint =
+        Paint()
+          ..color = color
+          ..style = PaintingStyle.fill;
+
+    final path = Path();
+    final centerX = size.width / 2;
+    final centerY = size.height / 2;
+    final width = size.width;
+    final height = size.height;
+
+    path.moveTo(centerX, centerY - height / 2); // Top
+    path.lineTo(centerX + width / 2, centerY); // Right
+    path.lineTo(centerX, centerY + height / 2); // Bottom
+    path.lineTo(centerX - width / 2, centerY); // Left
+    path.close();
+
+    canvas.drawPath(path, paint);
+  }
+
+  @override
+  bool shouldRepaint(DiamondPainter oldDelegate) => color != oldDelegate.color;
 }
 
 class GemPair {

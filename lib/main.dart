@@ -36,168 +36,99 @@ class _GameScreenState extends State<GameScreen> {
   bool isPlaying = false;
   bool isGameOver = false;
   Timer? _timer;
-  List<GemPair> gemPairs = [];
+  List<Gem> gems = [];
   double gameAreaHeight = 0;
   double gameAreaWidth = 0;
   static const int gridColumns = 8; // Number of columns in the grid
   late double gridCellWidth; // Width of each grid cell
   late double gridCellHeight; // Height of each grid cell
-  static const double gemPairSpacing = 8; // Spacing between gems in a pair
-  late double
-  totalGemPairHeight; // Total height of a gem pair including spacing
 
   void _updateGridDimensions(double width, double height) {
     gameAreaWidth = width;
-    gridCellWidth = width / gridColumns; // Remove padding
+    gridCellWidth = width / gridColumns;
     gridCellHeight = gridCellWidth; // Make cells square
-
-    // Set height to exactly 16 cells
-    gameAreaHeight = gridCellHeight * 16;
-
-    totalGemPairHeight = gridCellHeight * 2 + gemPairSpacing;
+    gameAreaHeight = gridCellHeight * 16; // Exactly 16 rows
   }
 
   double _snapToGridX(double x) {
-    // Convert x position to grid column
     final column = (x / gridCellWidth).round();
-    // Convert back to pixel position
     return column * gridCellWidth;
   }
 
   double _snapToGridY(double y) {
-    // Convert y position to grid row
     final row = (y / gridCellHeight).round();
-    // Convert back to pixel position
     return row * gridCellHeight;
   }
 
-  bool _checkCollision(GemPair movingPair, GemPair stoppedPair) {
-    // Check vertical collision (bottom of moving pair touching top of stopped pair)
-    final movingBottom = movingPair.yPosition + totalGemPairHeight;
-    final stoppedTop = stoppedPair.yPosition;
+  bool _checkCollision(Gem movingGem, Gem stoppedGem) {
+    // Check if gems are in the same column
+    if (movingGem.gridX != stoppedGem.gridX) {
+      return false;
+    }
 
-    // Check horizontal alignment (x-positions are close enough)
-    final horizontalOverlap =
-        (movingPair.xPosition - stoppedPair.xPosition).abs() < gridCellWidth;
-
-    // Add a small buffer to ensure gems don't overlap
-    return horizontalOverlap && movingBottom >= stoppedTop - 2;
-  }
-
-  void _dropGemPair(GemPair pair) {
-    setState(() {
-      // Find the lowest possible position
-      double lowestY = gameAreaHeight - totalGemPairHeight;
-
-      // Check collisions with other stopped pairs
-      for (var otherPair in gemPairs) {
-        if (!otherPair.isMoving && otherPair != pair) {
-          // Check if there's a horizontal overlap
-          if ((pair.xPosition - otherPair.xPosition).abs() < gridCellWidth) {
-            // Calculate the y position where collision would occur
-            double collisionY = otherPair.yPosition - totalGemPairHeight;
-            // Update lowestY if this collision point is higher than our current lowest
-            if (collisionY < lowestY) {
-              lowestY = collisionY;
-            }
-          }
-        }
-      }
-
-      // Move the pair to the lowest possible position
-      pair.yPosition = lowestY;
-      pair.isMoving = false;
-
-      // Check for game over
-      if (pair.yPosition <= 0) {
-        isGameOver = true;
-        _stopGame();
-      }
-    });
+    // Check if moving gem is one row above stopped gem
+    return movingGem.gridY + 1 == stoppedGem.gridY;
   }
 
   void _handleTap(TapUpDetails details) {
     if (!isPlaying || isGameOver) return;
 
     setState(() {
-      final newGemPairs = List<GemPair>.from(gemPairs);
+      final newGems = List<Gem>.from(gems);
 
-      // Find the currently moving pair
-      final movingPair = newGemPairs.firstWhere(
-        (pair) => pair.isMoving,
-        orElse: () => newGemPairs.last,
+      // Find the currently moving gem
+      final movingGem = newGems.firstWhere(
+        (gem) => gem.isMoving,
+        orElse: () => newGems.last,
       );
 
-      // Simple left/right detection based on tap position
+      // Calculate new column position based on tap
+      int newX = movingGem.gridX;
       if (details.globalPosition.dx < MediaQuery.of(context).size.width / 2) {
-        // Move left
-        movingPair.xPosition = (movingPair.xPosition - gridCellWidth).clamp(
-          16.0,
-          gameAreaWidth - gridCellWidth - 16,
-        );
+        newX = movingGem.gridX - 1;
       } else {
-        // Move right
-        movingPair.xPosition = (movingPair.xPosition + gridCellWidth).clamp(
-          16.0,
-          gameAreaWidth - gridCellWidth - 16,
-        );
+        newX = movingGem.gridX + 1;
       }
 
-      gemPairs = newGemPairs;
+      // Clamp to game area bounds
+      newX = newX.clamp(0, gridColumns - 1);
+
+      // Check for collisions with other stopped gems
+      bool hasCollision = false;
+      for (var otherGem in newGems) {
+        if (!otherGem.isMoving && otherGem != movingGem) {
+          if (newX == otherGem.gridX) {
+            hasCollision = true;
+            break;
+          }
+        }
+      }
+
+      // Only move if there's no collision
+      if (!hasCollision) {
+        movingGem.gridX = newX;
+      }
+
+      gems = newGems;
     });
   }
 
-  void _handleVerticalDrag(DragEndDetails details) {
-    if (!isPlaying || isGameOver) return;
-
-    // Check if it's a downward swipe
-    if (details.primaryVelocity != null && details.primaryVelocity! > 0) {
-      final newGemPairs = List<GemPair>.from(gemPairs);
-      final movingPair = newGemPairs.firstWhere(
-        (pair) => pair.isMoving,
-        orElse: () => newGemPairs.last,
-      );
-      _dropGemPair(movingPair);
-    }
-  }
-
-  void togglePlayPause() {
-    if (isGameOver) {
-      // Reset game when game is over
-      setState(() {
-        isGameOver = false;
-        gemPairs = [];
-        isPlaying = false;
-      });
-      return;
-    }
-
-    setState(() {
-      isPlaying = !isPlaying;
-      if (isPlaying) {
-        _startGame();
-      } else {
-        _stopGame();
-      }
-    });
-  }
-
-  void _startGame() {
+  void _startGameLoop() {
     _timer?.cancel();
-    _timer = Timer.periodic(const Duration(milliseconds: 50), (timer) {
+    _timer = Timer.periodic(const Duration(milliseconds: 500), (timer) {
       setState(() {
-        final newGemPairs = List<GemPair>.from(gemPairs);
+        final newGems = List<Gem>.from(gems);
 
-        // First, handle movement of existing pairs
-        for (var pair in newGemPairs) {
-          if (pair.isMoving) {
-            // Check for collision with stopped pairs
+        // First, handle movement of existing gems
+        for (var gem in newGems) {
+          if (gem.isMoving) {
+            // Check for collision with stopped gems
             bool hasCollision = false;
 
-            // Check collision with other stopped pairs
-            for (var otherPair in newGemPairs) {
-              if (!otherPair.isMoving && otherPair != pair) {
-                if (_checkCollision(pair, otherPair)) {
+            // Check collision with other stopped gems
+            for (var otherGem in newGems) {
+              if (!otherGem.isMoving && otherGem != gem) {
+                if (_checkCollision(gem, otherGem)) {
                   hasCollision = true;
                   break;
                 }
@@ -205,19 +136,17 @@ class _GameScreenState extends State<GameScreen> {
             }
 
             // Check collision with bottom of game area
-            if (pair.yPosition >= gameAreaHeight - totalGemPairHeight) {
+            if (gem.gridY >= 15) {
+              // Last row
               hasCollision = true;
             }
 
             if (!hasCollision) {
-              pair.yPosition +=
-                  gridCellHeight / 8; // Move by 1/8 of a grid cell
+              gem.gridY += 1; // Move down one row
             } else {
-              pair.isMoving = false;
-              // Snap to grid
-              pair.yPosition = _snapToGridY(pair.yPosition);
-              // Check if the stopped pair is at the top
-              if (pair.yPosition <= 0) {
+              gem.isMoving = false;
+              // Check if the stopped gem is at the top
+              if (gem.gridY <= 0) {
                 isGameOver = true;
                 _stopGame();
                 return;
@@ -226,20 +155,82 @@ class _GameScreenState extends State<GameScreen> {
           }
         }
 
-        // Then, check if we need to add a new pair
-        if (newGemPairs.isEmpty || !newGemPairs.last.isMoving) {
-          final newPair = GemPair.random(size: gridCellWidth);
-          newPair.xPosition = 16; // Start at left edge
-          newGemPairs.add(newPair);
+        // Then, check if we need to add a new gem
+        if (newGems.isEmpty || !newGems.last.isMoving) {
+          final newGem = Gem.random(size: gridCellWidth);
+          newGem.gridX = 0; // Start at leftmost column
+          newGem.gridY = 0; // Start at top row
+          newGem.isMoving = true;
+          newGems.add(newGem);
         }
 
-        gemPairs = newGemPairs;
+        gems = newGems;
       });
+    });
+  }
+
+  void _startGame() {
+    // Initialize grid dimensions
+    final maxWidth = MediaQuery.of(context).size.width * 0.9;
+    final cellWidth = maxWidth / gridColumns;
+    final cellHeight = cellWidth;
+    final gameHeight = cellHeight * 16;
+
+    // Scale down if height is too large
+    final maxHeight = MediaQuery.of(context).size.height * 0.7;
+    final scale = gameHeight > maxHeight ? maxHeight / gameHeight : 1.0;
+    final scaledWidth = maxWidth * scale;
+    final scaledHeight = gameHeight * scale;
+
+    _updateGridDimensions(scaledWidth, scaledHeight);
+
+    // Add initial gem
+    setState(() {
+      final newGem = Gem.random(size: gridCellWidth);
+      newGem.gridX = 0; // Leftmost column
+      newGem.gridY = 0; // Top row
+      newGem.isMoving = true;
+      gems = [newGem];
+    });
+
+    _startGameLoop();
+  }
+
+  void togglePlayPause() {
+    if (isGameOver) {
+      // Reset game when game is over
+      setState(() {
+        isGameOver = false;
+        gems = [];
+        isPlaying = false;
+      });
+      return;
+    }
+
+    setState(() {
+      isPlaying = !isPlaying;
+      if (isPlaying) {
+        if (gems.isEmpty) {
+          _startGame();
+        } else {
+          _startGameLoop();
+        }
+      } else {
+        _stopGame();
+      }
     });
   }
 
   void _stopGame() {
     _timer?.cancel();
+  }
+
+  void _resetGame() {
+    setState(() {
+      isGameOver = false;
+      gems = [];
+      isPlaying = false;
+    });
   }
 
   @override
@@ -267,15 +258,27 @@ class _GameScreenState extends State<GameScreen> {
                       fontWeight: FontWeight.bold,
                     ),
                   ),
-                  IconButton(
-                    onPressed: togglePlayPause,
-                    icon: Icon(
-                      isGameOver
-                          ? Icons.refresh
-                          : (isPlaying ? Icons.pause : Icons.play_arrow),
-                      size: 32,
-                      color: Colors.black,
-                    ),
+                  Row(
+                    children: [
+                      IconButton(
+                        onPressed: _resetGame,
+                        icon: const Icon(
+                          Icons.refresh,
+                          size: 32,
+                          color: Colors.black,
+                        ),
+                      ),
+                      IconButton(
+                        onPressed: togglePlayPause,
+                        icon: Icon(
+                          isGameOver
+                              ? Icons.refresh
+                              : (isPlaying ? Icons.pause : Icons.play_arrow),
+                          size: 32,
+                          color: Colors.black,
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
@@ -284,9 +287,11 @@ class _GameScreenState extends State<GameScreen> {
               child: Center(
                 child: LayoutBuilder(
                   builder: (context, constraints) {
-                    // Calculate the maximum width that maintains 8:16 aspect ratio
+                    // Calculate the maximum possible size while maintaining 8:16 aspect ratio
                     final maxWidth = constraints.maxWidth * 0.9;
                     final maxHeight = constraints.maxHeight;
+
+                    // Calculate cell size based on width
                     final cellWidth = maxWidth / gridColumns;
                     final cellHeight = cellWidth;
                     final gameHeight = cellHeight * 16;
@@ -296,6 +301,8 @@ class _GameScreenState extends State<GameScreen> {
                         gameHeight > maxHeight ? maxHeight / gameHeight : 1.0;
                     final scaledWidth = maxWidth * scale;
                     final scaledHeight = gameHeight * scale;
+                    final scaledCellWidth = cellWidth * scale;
+                    final scaledCellHeight = cellHeight * scale;
 
                     return SizedBox(
                       width: scaledWidth,
@@ -315,33 +322,26 @@ class _GameScreenState extends State<GameScreen> {
                                   painter: GridPainter(
                                     width: scaledWidth,
                                     height: scaledHeight,
-                                    cellWidth: cellWidth * scale,
-                                    cellHeight: cellHeight * scale,
+                                    cellWidth: scaledCellWidth,
+                                    cellHeight: scaledCellHeight,
                                     columns: gridColumns,
                                   ),
                                 ),
                                 GestureDetector(
                                   onTapUp: _handleTap,
-                                  onVerticalDragEnd: _handleVerticalDrag,
                                   behavior: HitTestBehavior.opaque,
                                   child: Stack(
                                     children: [
-                                      for (var pair in gemPairs)
+                                      for (var gem in gems)
                                         Positioned(
-                                          left:
-                                              _snapToGridX(pair.xPosition) *
-                                              scale,
-                                          top:
-                                              _snapToGridY(pair.yPosition) *
-                                              scale,
-                                          child: Column(
-                                            children: [
-                                              pair.gem1.build(context),
-                                              SizedBox(
-                                                height: gemPairSpacing * scale,
-                                              ),
-                                              pair.gem2.build(context),
-                                            ],
+                                          left: gem.gridX * scaledCellWidth,
+                                          top: gem.gridY * scaledCellHeight,
+                                          child: SizedBox(
+                                            width: scaledCellWidth,
+                                            height: scaledCellHeight,
+                                            child: Center(
+                                              child: gem.build(context),
+                                            ),
                                           ),
                                         ),
                                     ],
