@@ -59,6 +59,38 @@ class _GameScreenState extends State<GameScreen> {
     return horizontalOverlap && movingBottom >= stoppedTop - 2;
   }
 
+  void _dropGemPair(GemPair pair) {
+    setState(() {
+      // Find the lowest possible position
+      double lowestY = gameAreaHeight - totalGemPairHeight;
+
+      // Check collisions with other stopped pairs
+      for (var otherPair in gemPairs) {
+        if (!otherPair.isMoving && otherPair != pair) {
+          // Check if there's a horizontal overlap
+          if ((pair.xPosition - otherPair.xPosition).abs() < gemWidth) {
+            // Calculate the y position where collision would occur
+            double collisionY = otherPair.yPosition - totalGemPairHeight;
+            // Update lowestY if this collision point is higher than our current lowest
+            if (collisionY < lowestY) {
+              lowestY = collisionY;
+            }
+          }
+        }
+      }
+
+      // Move the pair to the lowest possible position
+      pair.yPosition = lowestY;
+      pair.isMoving = false;
+
+      // Check for game over
+      if (pair.yPosition <= 0) {
+        isGameOver = true;
+        _stopGame();
+      }
+    });
+  }
+
   void _handleTap(TapUpDetails details) {
     if (!isPlaying || isGameOver) return;
 
@@ -88,6 +120,20 @@ class _GameScreenState extends State<GameScreen> {
 
       gemPairs = newGemPairs;
     });
+  }
+
+  void _handleVerticalDrag(DragEndDetails details) {
+    if (!isPlaying || isGameOver) return;
+
+    // Check if it's a downward swipe
+    if (details.primaryVelocity != null && details.primaryVelocity! > 0) {
+      final newGemPairs = List<GemPair>.from(gemPairs);
+      final movingPair = newGemPairs.firstWhere(
+        (pair) => pair.isMoving,
+        orElse: () => newGemPairs.last,
+      );
+      _dropGemPair(movingPair);
+    }
   }
 
   void togglePlayPause() {
@@ -222,6 +268,7 @@ class _GameScreenState extends State<GameScreen> {
                             gameAreaWidth = constraints.maxWidth;
                             return GestureDetector(
                               onTapUp: _handleTap,
+                              onVerticalDragEnd: _handleVerticalDrag,
                               behavior: HitTestBehavior.opaque,
                               child: Stack(
                                 children: [
