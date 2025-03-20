@@ -34,16 +34,21 @@ class GameScreen extends StatefulWidget {
 
 class _GameScreenState extends State<GameScreen> {
   bool isPlaying = false;
+  bool isGameOver = false;
   Timer? _timer;
   List<GemPair> gemPairs = [];
   double gameAreaHeight = 0;
   double gameAreaWidth = 0;
-  static const double gemHeight = 48; // 40 (gem size) + 8 (spacing)
+  static const double gemHeight = 40; // Size of a single gem
   static const double gemWidth = 40;
+  static const double gemPairSpacing = 8; // Spacing between gems in a pair
+  static const double totalGemPairHeight =
+      gemHeight * 2 +
+      gemPairSpacing; // Total height of a gem pair including spacing
 
   bool _checkCollision(GemPair movingPair, GemPair stoppedPair) {
     // Check vertical collision (bottom of moving pair touching top of stopped pair)
-    final movingBottom = movingPair.yPosition + (gemHeight * 2);
+    final movingBottom = movingPair.yPosition + totalGemPairHeight;
     final stoppedTop = stoppedPair.yPosition;
 
     // Check horizontal alignment (x-positions are close enough)
@@ -55,7 +60,7 @@ class _GameScreenState extends State<GameScreen> {
   }
 
   void _handleTap(TapUpDetails details) {
-    if (!isPlaying) return;
+    if (!isPlaying || isGameOver) return;
 
     setState(() {
       final newGemPairs = List<GemPair>.from(gemPairs);
@@ -86,6 +91,16 @@ class _GameScreenState extends State<GameScreen> {
   }
 
   void togglePlayPause() {
+    if (isGameOver) {
+      // Reset game when game is over
+      setState(() {
+        isGameOver = false;
+        gemPairs = [];
+        isPlaying = false;
+      });
+      return;
+    }
+
     setState(() {
       isPlaying = !isPlaying;
       if (isPlaying) {
@@ -119,7 +134,7 @@ class _GameScreenState extends State<GameScreen> {
             }
 
             // Check collision with bottom of game area
-            if (pair.yPosition >= gameAreaHeight - (gemHeight * 2)) {
+            if (pair.yPosition >= gameAreaHeight - totalGemPairHeight) {
               hasCollision = true;
             }
 
@@ -127,6 +142,12 @@ class _GameScreenState extends State<GameScreen> {
               pair.yPosition += 2;
             } else {
               pair.isMoving = false;
+              // Check if the stopped pair is at the top
+              if (pair.yPosition <= 0) {
+                isGameOver = true;
+                _stopGame();
+                return;
+              }
             }
           }
         }
@@ -165,14 +186,19 @@ class _GameScreenState extends State<GameScreen> {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Text(
-                    'Game',
-                    style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+                  Text(
+                    isGameOver ? 'Game Over' : 'Game',
+                    style: const TextStyle(
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                   IconButton(
                     onPressed: togglePlayPause,
                     icon: Icon(
-                      isPlaying ? Icons.pause : Icons.play_arrow,
+                      isGameOver
+                          ? Icons.refresh
+                          : (isPlaying ? Icons.pause : Icons.play_arrow),
                       size: 32,
                       color: Colors.black,
                     ),
@@ -184,36 +210,54 @@ class _GameScreenState extends State<GameScreen> {
               child: Center(
                 child: SizedBox(
                   width: MediaQuery.of(context).size.width * 0.9,
-                  child: Container(
-                    decoration: BoxDecoration(
-                      border: Border.all(color: Colors.purple, width: 2),
-                    ),
-                    child: LayoutBuilder(
-                      builder: (context, constraints) {
-                        gameAreaHeight = constraints.maxHeight;
-                        gameAreaWidth = constraints.maxWidth;
-                        return GestureDetector(
-                          onTapUp: _handleTap,
-                          behavior: HitTestBehavior.opaque,
-                          child: Stack(
-                            children: [
-                              for (var pair in gemPairs)
-                                Positioned(
-                                  left: pair.xPosition,
-                                  top: pair.yPosition,
-                                  child: Column(
-                                    children: [
-                                      pair.gem1.build(context),
-                                      const SizedBox(height: 8),
-                                      pair.gem2.build(context),
-                                    ],
-                                  ),
-                                ),
-                            ],
+                  child: Stack(
+                    children: [
+                      Container(
+                        decoration: BoxDecoration(
+                          border: Border.all(color: Colors.purple, width: 2),
+                        ),
+                        child: LayoutBuilder(
+                          builder: (context, constraints) {
+                            gameAreaHeight = constraints.maxHeight;
+                            gameAreaWidth = constraints.maxWidth;
+                            return GestureDetector(
+                              onTapUp: _handleTap,
+                              behavior: HitTestBehavior.opaque,
+                              child: Stack(
+                                children: [
+                                  for (var pair in gemPairs)
+                                    Positioned(
+                                      left: pair.xPosition,
+                                      top: pair.yPosition,
+                                      child: Column(
+                                        children: [
+                                          pair.gem1.build(context),
+                                          SizedBox(height: gemPairSpacing),
+                                          pair.gem2.build(context),
+                                        ],
+                                      ),
+                                    ),
+                                ],
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                      if (isGameOver)
+                        Container(
+                          color: Colors.black.withOpacity(0.5),
+                          child: const Center(
+                            child: Text(
+                              'Game Over',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 48,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
                           ),
-                        );
-                      },
-                    ),
+                        ),
+                    ],
                   ),
                 ),
               ),
