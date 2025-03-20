@@ -14,7 +14,7 @@ class Gem {
   final GemColor color;
   final double size;
 
-  Gem({required this.type, required this.color, this.size = 40});
+  Gem({required this.type, required this.color, required this.size});
 
   Color get colorValue {
     switch (color) {
@@ -73,7 +73,7 @@ class GemPair {
     this.isMoving = true,
   });
 
-  static GemPair random() {
+  static GemPair random({required double size}) {
     final random = math.Random();
     final types = GemType.values;
     final colors = GemColor.values;
@@ -84,8 +84,8 @@ class GemPair {
     final color2 = colors[random.nextInt(colors.length)];
 
     return GemPair(
-      gem1: Gem(type: type1, color: color1),
-      gem2: Gem(type: type2, color: color2),
+      gem1: Gem(type: type1, color: color1, size: size),
+      gem2: Gem(type: type2, color: color2, size: size),
     );
   }
 }

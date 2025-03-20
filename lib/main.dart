@@ -39,12 +39,37 @@ class _GameScreenState extends State<GameScreen> {
   List<GemPair> gemPairs = [];
   double gameAreaHeight = 0;
   double gameAreaWidth = 0;
-  static const double gemHeight = 40; // Size of a single gem
-  static const double gemWidth = 40;
+  static const int gridColumns = 8; // Number of columns in the grid
+  late double gridCellWidth; // Width of each grid cell
+  late double gridCellHeight; // Height of each grid cell
   static const double gemPairSpacing = 8; // Spacing between gems in a pair
-  static const double totalGemPairHeight =
-      gemHeight * 2 +
-      gemPairSpacing; // Total height of a gem pair including spacing
+  late double
+  totalGemPairHeight; // Total height of a gem pair including spacing
+
+  void _updateGridDimensions(double width, double height) {
+    gameAreaWidth = width;
+    gridCellWidth = width / gridColumns; // Remove padding
+    gridCellHeight = gridCellWidth; // Make cells square
+
+    // Set height to exactly 16 cells
+    gameAreaHeight = gridCellHeight * 16;
+
+    totalGemPairHeight = gridCellHeight * 2 + gemPairSpacing;
+  }
+
+  double _snapToGridX(double x) {
+    // Convert x position to grid column
+    final column = (x / gridCellWidth).round();
+    // Convert back to pixel position
+    return column * gridCellWidth;
+  }
+
+  double _snapToGridY(double y) {
+    // Convert y position to grid row
+    final row = (y / gridCellHeight).round();
+    // Convert back to pixel position
+    return row * gridCellHeight;
+  }
 
   bool _checkCollision(GemPair movingPair, GemPair stoppedPair) {
     // Check vertical collision (bottom of moving pair touching top of stopped pair)
@@ -53,7 +78,7 @@ class _GameScreenState extends State<GameScreen> {
 
     // Check horizontal alignment (x-positions are close enough)
     final horizontalOverlap =
-        (movingPair.xPosition - stoppedPair.xPosition).abs() < gemWidth;
+        (movingPair.xPosition - stoppedPair.xPosition).abs() < gridCellWidth;
 
     // Add a small buffer to ensure gems don't overlap
     return horizontalOverlap && movingBottom >= stoppedTop - 2;
@@ -68,7 +93,7 @@ class _GameScreenState extends State<GameScreen> {
       for (var otherPair in gemPairs) {
         if (!otherPair.isMoving && otherPair != pair) {
           // Check if there's a horizontal overlap
-          if ((pair.xPosition - otherPair.xPosition).abs() < gemWidth) {
+          if ((pair.xPosition - otherPair.xPosition).abs() < gridCellWidth) {
             // Calculate the y position where collision would occur
             double collisionY = otherPair.yPosition - totalGemPairHeight;
             // Update lowestY if this collision point is higher than our current lowest
@@ -106,15 +131,15 @@ class _GameScreenState extends State<GameScreen> {
       // Simple left/right detection based on tap position
       if (details.globalPosition.dx < MediaQuery.of(context).size.width / 2) {
         // Move left
-        movingPair.xPosition = (movingPair.xPosition - gemWidth).clamp(
+        movingPair.xPosition = (movingPair.xPosition - gridCellWidth).clamp(
           16.0,
-          gameAreaWidth - gemWidth - 16,
+          gameAreaWidth - gridCellWidth - 16,
         );
       } else {
         // Move right
-        movingPair.xPosition = (movingPair.xPosition + gemWidth).clamp(
+        movingPair.xPosition = (movingPair.xPosition + gridCellWidth).clamp(
           16.0,
-          gameAreaWidth - gemWidth - 16,
+          gameAreaWidth - gridCellWidth - 16,
         );
       }
 
@@ -185,9 +210,12 @@ class _GameScreenState extends State<GameScreen> {
             }
 
             if (!hasCollision) {
-              pair.yPosition += 2;
+              pair.yPosition +=
+                  gridCellHeight / 8; // Move by 1/8 of a grid cell
             } else {
               pair.isMoving = false;
+              // Snap to grid
+              pair.yPosition = _snapToGridY(pair.yPosition);
               // Check if the stopped pair is at the top
               if (pair.yPosition <= 0) {
                 isGameOver = true;
@@ -200,7 +228,7 @@ class _GameScreenState extends State<GameScreen> {
 
         // Then, check if we need to add a new pair
         if (newGemPairs.isEmpty || !newGemPairs.last.isMoving) {
-          final newPair = GemPair.random();
+          final newPair = GemPair.random(size: gridCellWidth);
           newPair.xPosition = 16; // Start at left edge
           newGemPairs.add(newPair);
         }
@@ -254,58 +282,92 @@ class _GameScreenState extends State<GameScreen> {
             ),
             Expanded(
               child: Center(
-                child: SizedBox(
-                  width: MediaQuery.of(context).size.width * 0.9,
-                  child: Stack(
-                    children: [
-                      Container(
-                        decoration: BoxDecoration(
-                          border: Border.all(color: Colors.purple, width: 2),
-                        ),
-                        child: LayoutBuilder(
-                          builder: (context, constraints) {
-                            gameAreaHeight = constraints.maxHeight;
-                            gameAreaWidth = constraints.maxWidth;
-                            return GestureDetector(
-                              onTapUp: _handleTap,
-                              onVerticalDragEnd: _handleVerticalDrag,
-                              behavior: HitTestBehavior.opaque,
-                              child: Stack(
-                                children: [
-                                  for (var pair in gemPairs)
-                                    Positioned(
-                                      left: pair.xPosition,
-                                      top: pair.yPosition,
-                                      child: Column(
-                                        children: [
-                                          pair.gem1.build(context),
-                                          SizedBox(height: gemPairSpacing),
-                                          pair.gem2.build(context),
-                                        ],
-                                      ),
-                                    ),
-                                ],
-                              ),
-                            );
-                          },
-                        ),
-                      ),
-                      if (isGameOver)
-                        Container(
-                          color: Colors.black.withOpacity(0.5),
-                          child: const Center(
-                            child: Text(
-                              'Game Over',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 48,
-                                fontWeight: FontWeight.bold,
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    // Calculate the maximum width that maintains 8:16 aspect ratio
+                    final maxWidth = constraints.maxWidth * 0.9;
+                    final maxHeight = constraints.maxHeight;
+                    final cellWidth = maxWidth / gridColumns;
+                    final cellHeight = cellWidth;
+                    final gameHeight = cellHeight * 16;
+
+                    // Scale down if height is too large
+                    final scale =
+                        gameHeight > maxHeight ? maxHeight / gameHeight : 1.0;
+                    final scaledWidth = maxWidth * scale;
+                    final scaledHeight = gameHeight * scale;
+
+                    return SizedBox(
+                      width: scaledWidth,
+                      height: scaledHeight,
+                      child: Stack(
+                        children: [
+                          Container(
+                            decoration: BoxDecoration(
+                              border: Border.all(
+                                color: Colors.purple,
+                                width: 2,
                               ),
                             ),
+                            child: Stack(
+                              children: [
+                                CustomPaint(
+                                  painter: GridPainter(
+                                    width: scaledWidth,
+                                    height: scaledHeight,
+                                    cellWidth: cellWidth * scale,
+                                    cellHeight: cellHeight * scale,
+                                    columns: gridColumns,
+                                  ),
+                                ),
+                                GestureDetector(
+                                  onTapUp: _handleTap,
+                                  onVerticalDragEnd: _handleVerticalDrag,
+                                  behavior: HitTestBehavior.opaque,
+                                  child: Stack(
+                                    children: [
+                                      for (var pair in gemPairs)
+                                        Positioned(
+                                          left:
+                                              _snapToGridX(pair.xPosition) *
+                                              scale,
+                                          top:
+                                              _snapToGridY(pair.yPosition) *
+                                              scale,
+                                          child: Column(
+                                            children: [
+                                              pair.gem1.build(context),
+                                              SizedBox(
+                                                height: gemPairSpacing * scale,
+                                              ),
+                                              pair.gem2.build(context),
+                                            ],
+                                          ),
+                                        ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
-                        ),
-                    ],
-                  ),
+                          if (isGameOver)
+                            Container(
+                              color: Colors.black.withOpacity(0.5),
+                              child: const Center(
+                                child: Text(
+                                  'Game Over',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 48,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    );
+                  },
                 ),
               ),
             ),
@@ -315,4 +377,49 @@ class _GameScreenState extends State<GameScreen> {
       ),
     );
   }
+}
+
+class GridPainter extends CustomPainter {
+  final double width;
+  final double height;
+  final double cellWidth;
+  final double cellHeight;
+  final int columns;
+
+  GridPainter({
+    required this.width,
+    required this.height,
+    required this.cellWidth,
+    required this.cellHeight,
+    required this.columns,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint =
+        Paint()
+          ..color = Colors.grey.withOpacity(0.2)
+          ..strokeWidth = 1;
+
+    // Draw vertical lines
+    for (var i = 0; i <= columns; i++) {
+      final x = i * cellWidth;
+      canvas.drawLine(Offset(x, 0), Offset(x, height), paint);
+    }
+
+    // Draw horizontal lines
+    final rows = (height / cellHeight).ceil();
+    for (var i = 0; i <= rows; i++) {
+      final y = i * cellHeight;
+      canvas.drawLine(Offset(0, y), Offset(width, y), paint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(GridPainter oldDelegate) =>
+      width != oldDelegate.width ||
+      height != oldDelegate.height ||
+      cellWidth != oldDelegate.cellWidth ||
+      cellHeight != oldDelegate.cellHeight ||
+      columns != oldDelegate.columns;
 }
